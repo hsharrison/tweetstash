@@ -38,8 +38,12 @@ class FileStash(Stash):
     Tweets are stored as separate JSON files, with the id as filename.
 
     """
-    def __init__(self, base_dir=None):
+    def __init__(self, base_dir=None, create_dir=False):
         self.base_dir = Path('.') if base_dir is None else Path(base_dir)
+        if create_dir:
+            self.base_dir.mkdir(parents=True, exist_ok=True)
+        if not self.base_dir.exists():
+            raise FileNotFoundError(base_dir)
 
     def tweet_path(self, tweet_id):
         return self.base_dir / (tweet_id + '.json')
