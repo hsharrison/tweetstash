@@ -38,29 +38,47 @@ class FileStash(Stash):
     Tweets are stored as separate JSON files, with the id as filename.
 
     """
-    def __init__(self, base_dir=None, create_dir=False):
+    def __init__(self, base_dir=None, create_dir=False, by_user=True):
+        self.by_user = by_user
         self.base_dir = Path('.') if base_dir is None else Path(base_dir)
         if create_dir:
             self.base_dir.mkdir(parents=True, exist_ok=True)
         if not self.base_dir.exists():
             raise FileNotFoundError(base_dir)
 
-    def tweet_path(self, tweet_id):
-        return self.base_dir / (tweet_id + '.json')
+    def tweet_path(self, tweet_id, user_id=None):
+        path = self.base_dir
+        if self.by_user:
+            if user_id is None:
+                raise TypeError('user_id required')
+            path /= user_id
 
-    def is_stashed(self, tweet_id):
-        return self.tweet_path(tweet_id).exists()
+        return path / (tweet_id + '.json')
+
+    def is_stashed(self, tweet_id, user_id=None):
+        return self.tweet_path(tweet_id, user_id=user_id).exists()
 
     def stash(self, tweet, overwrite=False):
         tweet_id = tweet['id_str']
-        if overwrite or not self.is_stashed(tweet_id):
-            with self.tweet_path(tweet_id).open('w') as file:
+        user_id = tweet['user']['id_str']
+        if overwrite or not self.is_stashed(tweet_id, user_id=user_id):
+            tweet_path = self.tweet_path(tweet_id, user_id=user_id)
+            if self.by_user:
+                tweet_path.parent.mkdir(exist_ok=True)
+            with tweet_path.open('w') as file:
                 json.dump(tweet, file)
 
-    def unstash(self, tweet_id):
-        with self.tweet_path(tweet_id).open() as file:
+    def unstash(self, tweet_id, user_id=None):
+        with self.tweet_path(tweet_id, user_id=user_id).open() as file:
             return json.load(file)
 
-    def all_ids(self):
-        for tweet_path in self.base_dir.glob('*.json'):
+    def all_ids(self, user_id=None):
+        if not self.by_user:
+            paths = self.base_dir.glob('*.json')
+        elif user_id is not None:
+            paths = (self.base_dir / user_id).glob('*.json')
+        else:
+            paths = self.base_dir.glob('*/*.json')
+
+        for tweet_path in paths:
             yield tweet_path.stem
