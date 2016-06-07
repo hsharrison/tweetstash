@@ -1,131 +1,98 @@
+import sys
 from pathlib import Path
 from datetime import timedelta
+from toolz import memoize
 import tweepy
 from tqdm import tqdm
 
 tweets_per_query = 100  # max allowed by Twitter API
 
 
-def limit_tweet_age(tweets, stop_time=None, stop_delta=None, **stop_delta_kwargs):
-    """Stop a stream of historical tweets after a certain time.
+class Search:
+    def __init__(self, stash, auth_data, search_terms):
+        self.stash = stash
+        self.auth_data = auth_data
+        self.search_terms = search_terms
 
-    Parameters
-    ----------
-    tweets : sequence of tweepy.Tweet
-    stop_time : datetime.datetime, optional
-        The stop time specified as an absolute time.
-    stop_delta : datetime.timedelta, optional
-        The stop time specified as a relative time.
-    **stop_delta_kwargs
-        The most natural way to specify the relative time, as datetime.timedelta kwargs.
-        E.g., days, weeks.
+    @classmethod
+    def from_config_dir(cls, stash, config_dir=None):
+        config_path = Path(config_dir or '.')
 
-    Yields
-    ------
-    tweepy.models.Status
+        # *.auth
+        try:
+            auth_path = next(config_path.glob('*.auth'))
+        except StopIteration:
+            raise FileNotFoundError('No .auth file found in {}'.format(config_path.absolute()))
+        with auth_path.open() as auth_file:
+            auth_data = auth_file.readlines()
 
-    """
+        # hashtags.list
+        hashtags_path = config_path / 'hashtags.list'
+        if not hashtags_path.is_file():
+            raise FileNotFoundError(hashtags_path)
+        with hashtags_path.open() as hashtags_file:
+            hashtags = hashtags_file.readlines()
+        search_terms = ['#' + hashtag for hashtag in hashtags]
 
-    if stop_time is None:
-        if stop_delta is None:
-            stop_delta = timedelta(**stop_delta_kwargs)
+        return cls(stash, auth_data, search_terms)
 
+    @property
+    @memoize(key=lambda args, kwargs: None)
+    def search_api(self):
+        auth = tweepy.AppAuthHandler(*self.auth_data[:2])
+        api = tweepy.API(auth, wait_on_rate_limit=True, wait_on_rate_limit_notify=True)
+        if not api:
+            raise ValueError('Authentication failed')
+        return api
+
+    @property
+    @memoize(key=lambda args, kwargs: None)
+    def stream_auth(self):
+        auth = tweepy.OAuthHandler(*self.auth_data[:2])
+        auth.set_access_token(*self.auth_data[2:])
+        return auth
+
+    def search(self, **stop_after):
+        if not stop_after:
+            stop_after['days'] = 36500
+        stop_delta = timedelta(**stop_after)
+
+        tweets = search_twitter(self.search_api, query=' OR '.join(self.search_terms))
         try:
             tweet = next(tweets)
         except StopIteration:
             return
         stop_time = tweet.created_at - stop_delta
-        yield tweet
+        self.stash.stash(tweet._json)
 
-    for tweet in tweets:
-        if tweet.created_at < stop_time:
-            break
-        yield tweet
+        for tweet in tweets:
+            if tweet.created_at < stop_time:
+                break
+            self.stash.stash(tweet._json)
 
+    def listen(self):
+        listener = StashListener(self.stash)
+        stream = tweepy.Stream(self.stream_auth, listener)
 
-def search_from_config_dir(config_dir=None):
-    """Read the query and auth data from a config dir, and execute the search.
-
-    Parameters
-    ----------
-    config_dir : str, optional
-        The directory to look in.
-        The default is the current directory.
-
-    Yields
-    ------
-    tweepy.models.Status
-
-    """
-    if config_dir is None:
-        config_dir = Path('.')
-
-    api = api_from_config_dir(config_dir)
-    query = query_from_config_dir(config_dir)
-
-    yield from search_twitter(api, **query)
+        try:
+            stream.filter(track=self.search_terms)
+        except KeyboardInterrupt:
+            sys.exit()
 
 
-def api_from_config_dir(config_dir):
-    """Set up auth from a confg file.
+class StashListener(tweepy.streaming.StreamListener):
+    def __init__(self, stash, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.stash = stash
 
-    The first file in `config_dir` matching ``*.auth`` will be read.
-    This file should contain the consumer key on the first line
-    and the consumer secret on the second line.
+    def on_status(self, tweet):
+        self.stash.stash(tweet._json)
+        return True
 
-    Parameters
-    ----------
-    config_dir : str
-        The directory to look in.
-
-    Returns
-    -------
-    tweepy.API
-
-    """
-    try:
-        auth_file = next(Path.glob('*.auth'))
-    except StopIteration:
-        raise FileNotFoundError('No .auth file found in {}'.format(config_dir.absolute()))
-
-    with auth_file.open() as auth_file:
-        auth_data = auth_file.read()
-
-    auth = tweepy.AppAuthHandler(*auth_data.split('\n'))
-    api = tweepy.API(auth, wait_on_rate_limit=True, wait_on_rate_limit_notify=True)
-    if not api:
-        raise ValueError('Authentication failed')
-    return api
-
-
-def query_from_config_dir(config_dir):
-    """Construct a query from a config directory.
-
-    The following files are read:
-      - ``hashtags.list``: A list of hashtags to search for
-        (one per line, without the ``#``).
-
-    Parameters
-    ----------
-    config_dir : str
-        The directory to look in.
-
-    Returns
-    -------
-    dict
-
-    """
-    query = {}
-
-    # hashtags.list
-    hashtag_path = config_dir / 'hashtags.list'
-    if hashtag_path.is_file():
-        with hashtag_path.open() as hashtag_file:
-            hashtags = hashtag_file.readlines()
-
-        query['query'] = ' OR '.join('#' + hashtag for hashtag in hashtags)
-
-    return query
+    def on_error(self, status):
+        print(status, file=sys.stderr)
+        if status == 420:
+            raise RuntimeError('Rate limited')
 
 
 def search_twitter(api, max_results=None, progress=False, **query):
