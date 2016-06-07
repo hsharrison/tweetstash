@@ -60,13 +60,13 @@ def search_from_config_dir(config_dir=None):
     if config_dir is None:
         config_dir = Path('.')
 
-    api = read_auth(config_dir=config_dir)
-    query = read_query(config_dir=config_dir)
+    api = api_from_config_dir(config_dir)
+    query = query_from_config_dir(config_dir)
 
     yield from search_twitter(api, **query)
 
 
-def read_auth(config_dir=None):
+def api_from_config_dir(config_dir):
     """Set up auth from a confg file.
 
     The first file in `config_dir` matching ``*.auth`` will be read.
@@ -75,18 +75,14 @@ def read_auth(config_dir=None):
 
     Parameters
     ----------
-    config_dir : str, optional
+    config_dir : str
         The directory to look in.
-        The default is the current directory.
 
     Returns
     -------
     tweepy.API
 
     """
-    if config_dir is None:
-        config_dir = Path('.')
-
     try:
         auth_file = next(Path.glob('*.auth'))
     except StopIteration:
@@ -102,7 +98,7 @@ def read_auth(config_dir=None):
     return api
 
 
-def read_query(config_dir=None):
+def query_from_config_dir(config_dir):
     """Construct a query from a config directory.
 
     The following files are read:
@@ -111,18 +107,14 @@ def read_query(config_dir=None):
 
     Parameters
     ----------
-    config_dir : str, optional
+    config_dir : str
         The directory to look in.
-        The default is the current directory.
 
     Returns
     -------
     dict
 
     """
-    if config_dir is None:
-        config_dir = Path('.')
-
     query = {}
 
     # hashtags.list
