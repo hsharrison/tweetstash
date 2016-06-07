@@ -28,10 +28,6 @@ class Stash(metaclass=ABCMeta):
     def unstash_all(self):
         yield from self.unstash_many(self.all_ids())
 
-    @abstractmethod
-    def all_ids(self):
-        pass
-
 
 class FileStash(Stash):
     """"Filesystem tweetstash backend.
@@ -46,6 +42,8 @@ class FileStash(Stash):
         if not self.base_dir.exists():
             raise FileNotFoundError(base_dir)
 
+        self.all_ids = set(self.read_all_ids())
+
     def tweet_path(self, tweet_id, user_id=None):
         path = self.base_dir
         if self.by_user:
@@ -56,7 +54,7 @@ class FileStash(Stash):
         return path / (tweet_id + '.json')
 
     def is_stashed(self, tweet_id, user_id=None):
-        return self.tweet_path(tweet_id, user_id=user_id).exists()
+        return tweet_id in self.all_ids
 
     def stash(self, tweet, overwrite=False):
         tweet_id = tweet['id_str']
@@ -67,12 +65,13 @@ class FileStash(Stash):
                 tweet_path.parent.mkdir(exist_ok=True)
             with tweet_path.open('w') as file:
                 json.dump(tweet, file)
+            self.all_ids.add(tweet_id)
 
     def unstash(self, tweet_id, user_id=None):
         with self.tweet_path(tweet_id, user_id=user_id).open() as file:
             return json.load(file)
 
-    def all_ids(self, user_id=None):
+    def read_all_ids(self, user_id=None):
         if not self.by_user:
             paths = self.base_dir.glob('*.json')
         elif user_id is not None:
