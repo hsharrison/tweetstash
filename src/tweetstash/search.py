@@ -31,7 +31,7 @@ class TweetSearch:
         hashtags_path = config_path / 'hashtags.list'
         if not hashtags_path.is_file():
             raise FileNotFoundError(hashtags_path)
-        with hashtags_path.open() as hashtags_file:
+        with hashtags_path.open(encoding='utf-8') as hashtags_file:
             hashtags = hashtags_file.read().splitlines()
         search_terms = ['#' + hashtag for hashtag in hashtags]
 
