@@ -22,7 +22,7 @@ def limit_tweet_age(tweets, stop_time=None, stop_delta=None, **stop_delta_kwargs
 
     Yields
     ------
-    tweepy.Tweet
+    tweepy.models.Status
 
     """
 
@@ -54,7 +54,7 @@ def search_from_config_dir(config_dir=None):
 
     Yields
     ------
-    tweepy.Tweet
+    tweepy.models.Status
 
     """
     if config_dir is None:
@@ -164,7 +164,7 @@ def search_twitter(api, max_results=None, progress=False, **query):
 
     Yields
     ------
-    tweepy.Tweet
+    tweepy.models.Status
 
     """
     query['query'] = query.get('q')
