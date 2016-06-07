@@ -53,39 +53,8 @@ Overview
 Utility for collecting tweets.
 
 * Free software: BSD license
-
-Installation
-============
-
-::
-
-    pip install tweetstash
-
-Documentation
-=============
-
-https://tweetstash.readthedocs.io/
-
-Development
-===========
-
-To run the all tests run::
-
-    tox
-
-Note, to combine the coverage data from all the tox environments run:
-
-.. list-table::
-    :widths: 10 90
-    :stub-columns: 1
-
-    - - Windows
-      - ::
-
-            set PYTEST_ADDOPTS=--cov-append
-            tox
-
-    - - Other
-      - ::
-
-            PYTEST_ADDOPTS=--cov-append tox
+  
+**Note**: this project is currently set up minimally to run a single project.
+Other features are planned.
+In the meantime, if something is missing that you would need to use this, let me know
+(or even better, submit a pull request).
