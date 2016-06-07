@@ -58,6 +58,7 @@ setup(
         'docopt',
         'tweepy',
         'toolz',
+        'tqdm',
     ],
     extras_require={
         # eg:
