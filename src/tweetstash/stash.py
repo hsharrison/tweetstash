@@ -1,3 +1,4 @@
+from itertols import zip_longest
 from abc import ABCMeta, abstractmethod
 from pathlib import Path
 import json
@@ -18,15 +19,19 @@ class Stash(metaclass=ABCMeta):
             self.stash(tweet)
 
     @abstractmethod
-    def unstash(self, tweet_id):
+    def unstash(self, tweet_id, **kwargs):
         pass
 
-    def unstash_many(self, tweet_ids):
-        for tweet_id in tweet_ids:
-            yield self.unstash(tweet_id)
+    def unstash_many(self, tweet_ids, kwargs_seq=()):
+        for tweet_id, kwargs in zip_longest(tweet_ids, kwargs_seq):
+            yield self.unstash(tweet_id, **kwargs or {})
 
     def unstash_all(self):
         yield from self.unstash_many(self.all_ids())
+
+    @abstractmethod
+    def remove_from_stash(self, tweet_id, **kwargs):
+        pass
 
 
 class FileStash(Stash):
@@ -81,3 +86,7 @@ class FileStash(Stash):
 
         for tweet_path in paths:
             yield tweet_path.stem
+
+    def remove_from_stash(self, tweet_id, user_id=None):
+        self.tweet_path(tweet_id, user_id=user_id).unlink()
+        self.all_ids.remove(tweet_id)
