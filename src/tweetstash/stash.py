@@ -1,4 +1,4 @@
-from itertols import zip_longest
+from itertools import zip_longest
 from abc import ABCMeta, abstractmethod
 from pathlib import Path
 import json
@@ -39,9 +39,10 @@ class FileStash(Stash):
     Tweets are stored as separate JSON files, with the id as filename.
 
     """
-    def __init__(self, base_dir=None, create_dir=False, by_user=True):
+    def __init__(self, base_dir=None, create_dir=False, by_user=True, log=True):
         self.by_user = by_user
         self.base_dir = Path('.') if base_dir is None else Path(base_dir)
+        self.log = log
         if create_dir:
             self.base_dir.mkdir(parents=True, exist_ok=True)
         if not self.base_dir.exists():
@@ -71,6 +72,8 @@ class FileStash(Stash):
             with tweet_path.open('w') as file:
                 json.dump(tweet, file)
             self.all_ids.add(tweet_id)
+        if self.log:
+            print('Saved tweet {}.'.format(tweet_id))
 
     def unstash(self, tweet_id, user_id=None):
         with self.tweet_path(tweet_id, user_id=user_id).open() as file:

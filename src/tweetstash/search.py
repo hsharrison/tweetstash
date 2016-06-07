@@ -1,14 +1,15 @@
 import sys
 from pathlib import Path
 from datetime import timedelta
-from toolz import memoize
+from toolz import partition_all
 import tweepy
 from tqdm import tqdm
 
 tweets_per_query = 100  # max allowed by Twitter API
+max_hashtags_per_search = 30
 
 
-class Search:
+class TweetSearch:
     def __init__(self, stash, auth_data, search_terms):
         self.stash = stash
         self.auth_data = auth_data
@@ -24,20 +25,18 @@ class Search:
         except StopIteration:
             raise FileNotFoundError('No .auth file found in {}'.format(config_path.absolute()))
         with auth_path.open() as auth_file:
-            auth_data = auth_file.readlines()
+            auth_data = auth_file.read().splitlines()
 
         # hashtags.list
         hashtags_path = config_path / 'hashtags.list'
         if not hashtags_path.is_file():
             raise FileNotFoundError(hashtags_path)
         with hashtags_path.open() as hashtags_file:
-            hashtags = hashtags_file.readlines()
+            hashtags = hashtags_file.read().splitlines()
         search_terms = ['#' + hashtag for hashtag in hashtags]
 
         return cls(stash, auth_data, search_terms)
 
-    @property
-    @memoize(key=lambda args, kwargs: None)
     def search_api(self):
         auth = tweepy.AppAuthHandler(*self.auth_data[:2])
         api = tweepy.API(auth, wait_on_rate_limit=True, wait_on_rate_limit_notify=True)
@@ -45,8 +44,6 @@ class Search:
             raise ValueError('Authentication failed')
         return api
 
-    @property
-    @memoize(key=lambda args, kwargs: None)
     def stream_auth(self):
         auth = tweepy.OAuthHandler(*self.auth_data[:2])
         auth.set_access_token(*self.auth_data[2:])
@@ -57,23 +54,25 @@ class Search:
             stop_after['days'] = 36500
         stop_delta = timedelta(**stop_after)
 
-        tweets = search_twitter(self.search_api, query=' OR '.join(self.search_terms))
-        try:
-            tweet = next(tweets)
-        except StopIteration:
-            return
-        stop_time = tweet.created_at - stop_delta
-        self.stash.stash(tweet._json)
-
-        for tweet in tweets:
-            if tweet.created_at < stop_time:
+        for hashtags in partition_all(max_hashtags_per_search, self.search_terms):
+            tweets = search_twitter(self.search_api(), query=' OR '.join(hashtags))
+            try:
+                tweet = next(tweets)
+            except StopIteration:
                 break
+            stop_time = tweet.created_at - stop_delta
             self.stash.stash(tweet._json)
+
+            for tweet in tweets:
+                if tweet.created_at < stop_time:
+                    break
+                self.stash.stash(tweet._json)
 
     def listen(self):
         listener = StashListener(self.stash)
-        stream = tweepy.Stream(self.stream_auth, listener)
+        stream = tweepy.Stream(self.stream_auth(), listener)
 
+        print('Listening (press Ctrl-C to stop)...')
         try:
             stream.filter(track=self.search_terms)
         except KeyboardInterrupt:
@@ -81,12 +80,15 @@ class Search:
 
 
 class StashListener(tweepy.streaming.StreamListener):
-    def __init__(self, stash, *args, **kwargs):
+    def __init__(self, stash, *args, log=True, **kwargs):
         super().__init__(*args, **kwargs)
         self.stash = stash
+        self.log = log
 
     def on_status(self, tweet):
         self.stash.stash(tweet._json)
+        if self.log:
+            print('Saved tweet {}'.format(tweet.id_str))
         return True
 
     def on_error(self, status):
@@ -126,7 +128,7 @@ def search_twitter(api, max_results=None, progress=False, **query):
     tweepy.models.Status
 
     """
-    query['query'] = query.get('q')
+    query['q'] = query.pop('query')
 
     n_tweets_found = 0
     max_id = query.get('max_id', -1)
@@ -137,12 +139,7 @@ def search_twitter(api, max_results=None, progress=False, **query):
             if max_id > 0:
                 query['max_id'] = str(max_id - 1)
 
-            try:
-                new_tweets = api.search(count=tweets_per_query, **query)
-            except tweepy.TweepError as e:
-                print('Encountered error: {}'.format(e))
-                break
-
+            new_tweets = api.search(count=tweets_per_query, **query)
             if not new_tweets:
                 break
 

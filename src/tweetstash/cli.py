@@ -1,32 +1,38 @@
-"""
-Module that contains the command line app.
+"""tweetstash
 
-Why does this file exist, and why not put this in __main__?
+Usage:
+  tweetstash [options] search
+  tweetstash [options] listen
 
-  You might be tempted to import things from __main__ later, but that will cause
-  problems: the code will get executed twice:
+Options:
+  --config=<config-dir>   Where to look for api.auth and hashtags.list.
+  --stash=<stash-dir>     Where to save tweets.
+  --by-user               Organize tweets by user id.
+  --days=<days>           How far back to search.
 
-  - When you run `python -mtweetstash` python will execute
-    ``__main__.py`` as a script. That means there won't be any
-    ``tweetstash.__main__`` in ``sys.modules``.
-  - When you import __main__ it will get executed again (as a module) because
-    there's no ``tweetstash.__main__`` in ``sys.modules``.
-
-  Also see (1) from http://click.pocoo.org/5/setuptools/#setuptools-integration
 """
 import sys
+from docopt import docopt
+
+from tweetstash import __version__, FileStash, TweetSearch
 
 
 def main(argv=sys.argv):
-    """
-    Args:
-        argv (list): List of arguments
+    args = docopt(__doc__, version=__version__)
 
-    Returns:
-        int: A return code
+    stash = FileStash(
+        base_dir=args['--stash'] or 'tweets',
+        create_dir=True,
+        by_user=args['--by-user'],
+    )
+    search = TweetSearch.from_config_dir(stash, args['--config'] or 'config')
 
-    Does stuff.
-    """
+    if args['search']:
+        if args['--days']:
+            stop_after = {'days': int(args['--days'])}
+        else:
+            stop_after = {}
+        search.search(**stop_after)
 
-    print(argv)
-    return 0
+    if args['listen']:
+        search.listen()
