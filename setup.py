@@ -21,7 +21,7 @@ def read(*names, **kwargs):
 
 setup(
     name='tweetstash',
-    version='0.1.1',
+    version='0.1.2',
     license='BSD',
     description='Utility for collecting tweets.',
     long_description='%s\n%s' % (

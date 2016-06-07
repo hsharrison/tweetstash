@@ -80,15 +80,12 @@ class TweetSearch:
 
 
 class StashListener(tweepy.streaming.StreamListener):
-    def __init__(self, stash, *args, log=True, **kwargs):
+    def __init__(self, stash, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.stash = stash
-        self.log = log
 
     def on_status(self, tweet):
         self.stash.stash(tweet._json)
-        if self.log:
-            print('Saved tweet {}'.format(tweet.id_str))
         return True
 
     def on_error(self, status):
