@@ -10,10 +10,11 @@ max_hashtags_per_search = 30
 
 
 class TweetSearch:
-    def __init__(self, stash, auth_data, search_terms):
+    def __init__(self, stash, auth_data, search_terms, filter_terms=None):
         self.stash = stash
         self.auth_data = auth_data
         self.search_terms = search_terms
+        self.filter_terms = filter_terms or []
 
     @classmethod
     def from_config_dir(cls, stash, config_dir=None):
@@ -35,7 +36,16 @@ class TweetSearch:
             hashtags = hashtags_file.read().splitlines()
         search_terms = ['#' + hashtag for hashtag in hashtags]
 
-        return cls(stash, auth_data, search_terms)
+        # filter.list
+        filter_path = config_path / 'filter.list'
+        if filter_path.is_file():
+            with filter_path.open(encoding='utf-8') as filter_file:
+                filters = filter_file.read().splitlines()
+            filter_terms = ['#' + hashtag for hashtag in filters]
+        else:
+            filter_terms = []
+
+        return cls(stash, auth_data, search_terms, filter_terms=filter_terms)
 
     def search_api(self):
         auth = tweepy.AppAuthHandler(*self.auth_data[:2])
@@ -66,7 +76,8 @@ class TweetSearch:
             for tweet in tweets:
                 if tweet.created_at < stop_time:
                     break
-                self.stash.stash(tweet._json)
+                if not any(filter_term in tweet.text for filter_term in self.filter_terms):
+                    self.stash.stash(tweet._json)
 
     def listen(self):
         listener = StashListener(self.stash)
